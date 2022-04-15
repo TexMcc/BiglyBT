@@ -1726,7 +1726,7 @@ SubscriptionManagerImpl
 			throw( new SubscriptionException( "Failed to create subscription", e ));
 		}
 	}
-
+	
 	protected String
 	getUniqueName(
 		String	name )
@@ -2002,6 +2002,26 @@ SubscriptionManagerImpl
 		}
 	}
 
+	@Override
+	public Subscription 
+	createSubscriptionTemplate(
+		String name )
+	
+		throws SubscriptionException
+	{
+		try{
+			return( createRSS( name, new URL( "subscription:?type=template" ), -1, false, null ));
+			
+		}catch( SubscriptionException e ){
+			
+			throw( e );
+			
+		}catch( Throwable e ){
+
+			throw( new SubscriptionException( "Failed to create subscription template", e ));
+		}
+	}
+	
 	protected void
 	checkURL(
 		URL		url )
@@ -2012,7 +2032,11 @@ SubscriptionManagerImpl
 
 			String protocol = url.getProtocol().toLowerCase();
 
-			if ( ! ( protocol.equals( "tor" ) || protocol.equals( "azplug" ) || protocol.equals( "file" ) || protocol.equals( "vuze" ))){
+			if ( ! ( 	protocol.equals( "tor" ) || 
+						protocol.equals( "azplug" ) || 
+						protocol.equals( "file" ) || 
+						protocol.equals( "subscription" ) || 
+						protocol.equals( "vuze" ))){
 
 				throw( new SubscriptionException( "Invalid URL '" + url + "'" ));
 			}
@@ -2180,16 +2204,17 @@ SubscriptionManagerImpl
 
 	protected void
 	changeSubscription(
-		SubscriptionImpl		subs )
+		SubscriptionImpl		subs,
+		int						reason )
 	{
 		if ( !subs.isRemoved()){
 
-			Iterator it = listeners.iterator();
+			Iterator<SubscriptionManagerListener> it = listeners.iterator();
 
 			while( it.hasNext()){
 
 				try{
-					((SubscriptionManagerListener)it.next()).subscriptionChanged( subs );
+					it.next().subscriptionChanged( subs, reason );
 
 				}catch( Throwable e ){
 
@@ -7842,7 +7867,9 @@ SubscriptionManagerImpl
 												
 							int res = SubscriptionUtils.getHashStatus( result );
 							
-							if ( res == SubscriptionUtils.HS_LIBRARY ){
+							if ( 	res == SubscriptionUtils.HS_LIBRARY ||
+									res == SubscriptionUtils.HS_ARCHIVE || 
+									res == SubscriptionUtils.HS_HISTORY ){
 								
 								last_result = result;
 								
@@ -7934,9 +7961,10 @@ SubscriptionManagerImpl
 
 	protected void
 	configDirty(
-		SubscriptionImpl		subs )
+		SubscriptionImpl		subs,
+		int						reason )
 	{
-		changeSubscription( subs );
+		changeSubscription( subs, reason );
 
 		configDirty();
 	}

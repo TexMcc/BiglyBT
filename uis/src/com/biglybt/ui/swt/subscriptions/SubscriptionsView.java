@@ -148,7 +148,7 @@ public class SubscriptionsView
 	 * @see com.biglybt.core.subs.SubscriptionManagerListener#subscriptionChanged(com.biglybt.core.subs.Subscription)
 	 */
 	@Override
-	public void subscriptionChanged(Subscription subscription) {
+	public void subscriptionChanged(Subscription subscription, int reason) {
 		if ( !subscription.isSubscribed()){
 			subscriptionRemoved(subscription);
 		}else if ( view.getRow(subscription) == null ){
@@ -372,6 +372,7 @@ public class SubscriptionsView
 				new ColumnSubscriptionParent(TABLE_ID),
 				new ColumnSubscriptionError(TABLE_ID),
 				new ColumnSubscriptionNewestDate(TABLE_ID),
+				new ColumnSubscriptionDependsOn(TABLE_ID),
 
 		};
 
@@ -490,8 +491,13 @@ public class SubscriptionsView
 			}
 
 			@Override
-			public void selected(TableRowCore[] rows) {
-				rows = view.getSelectedRows();
+			public void 
+			selectionChanged(
+				TableRowCore[] selected_rows, 
+				TableRowCore[] deselected_rows )
+			{
+				TableRowCore[] rows = view.getSelectedRows();
+				
 				ISelectedContent[] sels = new ISelectedContent[rows.length];
 
 				java.util.List<Subscription> subs = new ArrayList<>();

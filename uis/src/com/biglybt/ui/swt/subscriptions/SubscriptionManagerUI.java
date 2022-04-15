@@ -451,22 +451,23 @@ SubscriptionManagerUI
 			@Override
 			public void
 			subscriptionAdded(
-					Subscription 		subscription )
+				Subscription 		subscription )
 			{
 			}
 
 			@Override
 			public void
 			subscriptionChanged(
-					Subscription		sub )
+				Subscription		sub,
+				int					reason )
 			{
-				changeSubscription( sub );
+				changeSubscription( sub, reason );
 			}
 
 			@Override
 			public void
 			subscriptionSelected(
-					Subscription sub )
+				Subscription sub )
 			{
 				showSubscriptionMDI( sub );
 			}
@@ -474,7 +475,7 @@ SubscriptionManagerUI
 			@Override
 			public void
 			subscriptionRemoved(
-					Subscription 		subscription )
+				Subscription 		subscription )
 			{
 				removeSubscription( subscription );
 			}
@@ -482,15 +483,15 @@ SubscriptionManagerUI
 			@Override
 			public void
 			associationsChanged(
-					byte[]		association_hash )
+				byte[]		association_hash )
 			{
 			}
 
 			@Override
 			public void
 			subscriptionRequested(
-					URL					url,
-					Map<String,Object>	options )
+				URL					url,
+				Map<String,Object>	options )
 			{
 			}
 		};
@@ -559,7 +560,7 @@ SubscriptionManagerUI
 			@Override
 			public void
 			subscriptionAdded(
-					Subscription subscription )
+				Subscription subscription )
 			{
 				checkSubscriptionForStuff( subscription );
 			}
@@ -567,28 +568,30 @@ SubscriptionManagerUI
 			@Override
 			public void
 			subscriptionChanged(
-					Subscription		subscription )
+				Subscription		subscription,
+				int					reason )
 			{
+				changeSubscription(subscription, reason);
 			}
 
 			@Override
 			public void
 			subscriptionSelected(
-					Subscription subscription )
+				Subscription subscription )
 			{
 			}
 
 			@Override
 			public void
 			subscriptionRemoved(
-					Subscription subscription )
+				Subscription subscription )
 			{
 			}
 
 			@Override
 			public void
 			associationsChanged(
-					byte[] hash )
+				byte[] hash )
 			{
 				refreshColumns();
 			}
@@ -596,8 +599,8 @@ SubscriptionManagerUI
 			@Override
 			public void
 			subscriptionRequested(
-					final URL					url,
-					final Map<String,Object>	options )
+				final URL					url,
+				final Map<String,Object>	options )
 			{
 				Utils.execSWTThread(
 						new AERunnable()
@@ -1424,6 +1427,31 @@ SubscriptionManagerUI
 				}
 			});
 
+		mi = menu_manager.addMenuItem( parentID, "Subscription.menu.clearall" );
+		mi.setDisposeWithUIDetach(UIInstance.UIT_SWT);
+
+		mi.addListener(
+			new MenuItemListener()
+			{
+				@Override
+				public void
+				selected(
+					MenuItem menu, Object target )
+				{
+					SubscriptionManager subs_man = SubscriptionManagerFactory.getSingleton();
+
+					Subscription[] subs = subs_man.getSubscriptions( true );
+
+					for ( Subscription sub: subs ){
+
+						if ( !sub.isSearchTemplate()){
+
+							sub.getHistory().markAllResultsRead();
+						}
+					}
+				}
+			});
+		
 		mi = menu_manager.addMenuItem( parentID, "sep1" );
 		mi.setDisposeWithUIDetach(UIInstance.UIT_SWT);
 
@@ -1605,7 +1633,8 @@ SubscriptionManagerUI
 
 	protected void
 	changeSubscription(
-		final Subscription	subs )
+		final Subscription	subs,
+		int					reason )
 	{
 		refreshTitles( mdiEntryOverview );
 
@@ -1911,6 +1940,7 @@ SubscriptionManagerUI
 
 		while( entry != null ){
 
+			entry.redraw();
 			ViewTitleInfoManager.refreshTitleInfo(entry.getViewTitleInfo());
 
 			String key = entry.getParentID();
@@ -1978,42 +2008,97 @@ SubscriptionManagerUI
 	{
 		if ( all_subs.length > 1 ){
 
-			MenuItem menuItem = menu_creator.createMenu( "menu.set.parent");
-
-			menuItem.addMultiListener(new SubsMenuItemListener() {
-				@Override
-				public void selected(final Subscription[] subs) {
-					UISWTInputReceiver entry = new SimpleTextEntryWindow();
-					if ( subs.length==1 ){
-						entry.setPreenteredText(subs[0].getParent(), false );
-					}
-					entry.maintainWhitespace(false);
-					entry.allowEmptyInput( true );
-					entry.setLocalisedTitle(MessageText.getString("label.set.parent"));
-
-					entry.prompt(new UIInputReceiverListener() {
-						@Override
-						public void UIInputReceiverClosed(UIInputReceiver entry) {
-							if (!entry.hasSubmittedInput()){
-
-								return;
+			boolean all_search_templates = true;
+			
+			for ( Subscription sub: all_subs ){
+			
+				if ( !sub.isSearchTemplate()){
+					
+					all_search_templates = false;
+					
+					break;
+				}
+			}
+			
+			if ( !all_search_templates ){
+				
+				MenuItem menuItem = menu_creator.createMenu( "Subscription.menu.forcecheck" );
+				menuItem.setText(MessageText.getString("Subscription.menu.forcecheck"));
+				menuItem.addMultiListener(new SubsMenuItemListener() {
+					@Override
+					public void selected(Subscription[] subs) {
+						for ( Subscription sub: subs ){
+							if ( sub.isSearchTemplate()){
+								continue;
 							}
-
-							String input = entry.getSubmittedInput().trim();
-
-							if ( input.length() == 0 ){
-
-								input = null;
-							}
-
-							for ( Subscription sub: subs ){
-
-								sub.setParent( input );
+							try {
+								sub.getManager().getScheduler().downloadAsync( sub, true );
+							} catch (SubscriptionException e) {
+								Debug.out(e);
 							}
 						}
-					});
-				}
-			});
+					}
+				});
+	
+				menuItem = menu_creator.createMenu( "Subscription.menu.clearall");
+				menuItem.addMultiListener(new SubsMenuItemListener() {
+					@Override
+					public void selected(Subscription[] subs) {
+						for ( Subscription sub: subs ){
+							if ( sub.isSearchTemplate()){
+								continue;
+							}
+							sub.getHistory().markAllResultsRead();
+						}
+						menu_creator.refreshView();
+					}
+				});
+				
+				menu_creator.createMenu( "s1").setStyle( MenuItem.STYLE_SEPARATOR );
+
+				menuItem = menu_creator.createMenu( "menu.set.parent");
+	
+				menuItem.addMultiListener(new SubsMenuItemListener() {
+					@Override
+					public void selected(final Subscription[] subs) {
+						UISWTInputReceiver entry = new SimpleTextEntryWindow();
+						if ( subs.length==1 ){
+							entry.setPreenteredText(subs[0].getParent(), false );
+						}
+						entry.maintainWhitespace(false);
+						entry.allowEmptyInput( true );
+						entry.setLocalisedTitle(MessageText.getString("label.set.parent"));
+	
+						entry.prompt(new UIInputReceiverListener() {
+							@Override
+							public void UIInputReceiverClosed(UIInputReceiver entry) {
+								if (!entry.hasSubmittedInput()){
+	
+									return;
+								}
+	
+								String input = entry.getSubmittedInput().trim();
+	
+								if ( input.length() == 0 ){
+	
+									input = null;
+								}
+	
+								for ( Subscription sub: subs ){
+	
+									if ( sub.isSearchTemplate()){
+										continue;
+									}
+									sub.setParent( input );
+								}
+							}
+						});
+					}
+				});
+			}
+			
+			addDependsOnSubMenu( menu_manager, menu_creator, all_subs );
+			
 			return;
 		}
 
@@ -2180,7 +2265,7 @@ SubscriptionManagerUI
 
 				// sep
 
-			menu_creator.createMenu( "s1").setStyle( MenuItem.STYLE_SEPARATOR );
+			menu_creator.createMenu( "s4").setStyle( MenuItem.STYLE_SEPARATOR );
 
 				// category
 
@@ -2256,6 +2341,8 @@ SubscriptionManagerUI
 				}
 			});
 
+			addDependsOnSubMenu( menu_manager, menu_creator, all_subs );
+			
 				// view options
 			
 			menuItem = menu_creator.createMenu( "menu.view.options");
@@ -2773,6 +2860,147 @@ SubscriptionManagerUI
 		});
 	}
 
+	private static void
+	addDependsOnSubMenu(
+		MenuManager		menu_manager,
+		MenuCreator		menu_creator,
+		Subscription[]	menu_subs )	
+	{
+		MenuItem menuItem = menu_creator.createMenu( "menu.depends.on");
+
+		menuItem.setStyle( MenuItem.STYLE_MENU );
+
+		menuItem.addFillListener(
+			new MenuItemFillListener()
+			{
+				@Override
+				public void
+				menuWillBeShown(
+					MenuItem 	menu,
+					Object 		data )
+				{
+					menu.removeAllChildItems();
+
+					SubscriptionManager subs_man = SubscriptionManagerFactory.getSingleton();
+
+					Subscription[] all_subs = subs_man.getSubscriptions( true );
+
+					List<Subscription>	templates = new ArrayList<>();
+					
+					for ( Subscription sub: all_subs ){
+						
+						if ( sub.isSubscriptionTemplate()){
+							
+							templates.add( sub );
+						}
+					}
+					
+					if ( templates.isEmpty()){
+						
+						MenuItem mi = menu_manager.addMenuItem( menu, "menu.no.subs.templates" );
+
+						mi.setStyle( MenuItem.STYLE_RADIO );
+						
+						mi.setData( true );
+						
+						mi.setEnabled( false );
+						
+					}else{
+						
+						Set<Subscription>	enabled = new HashSet<>();
+						
+						List<Subscription> menu_templates 	= new ArrayList<>();
+						List<Subscription> menu_search		= new ArrayList<>();
+						
+						for ( Subscription subs: menu_subs ){
+							
+							if ( subs.isSearchTemplate()){
+								
+								menu_search.add( subs );
+								
+								continue;
+								
+							}else if ( subs.isSubscriptionTemplate()){
+								
+								menu_templates.add( subs );
+							}								
+							
+							List<Subscription> depends_on = subs.getDependsOn();
+							
+							if ( depends_on.isEmpty()){
+								
+								enabled.clear();
+								
+								break;
+								
+							}else{
+								
+								if ( enabled.isEmpty()){
+									
+									enabled.addAll( depends_on );
+									
+								}else{
+									
+									enabled.retainAll( depends_on );
+									
+									if ( enabled.isEmpty()){
+										
+										break;
+									}
+								}
+							}
+						}
+						
+						if ( menu_search.size() == menu_subs.length){
+							
+							return;
+						}
+						
+						Collections.sort( templates,(t1,t2)->t1.getName().compareTo(t2.getName()));
+						
+						for ( Subscription sub: templates ){
+							
+							if ( menu_templates.contains( sub )){
+								
+								continue;
+							}
+							
+							MenuItem mi = menu_manager.addMenuItem( menu, "!" + sub.getName() + "!" );
+
+							mi.setStyle( MenuItem.STYLE_CHECK );
+							
+							boolean enable = enabled.contains( sub );
+							
+							mi.setData( enable );
+
+							mi.addMultiListener((m,target)->{							
+								for ( Subscription s: menu_subs ){
+									
+									if ( s.isSearchTemplate()){
+										
+										continue;
+									}
+									
+									List<Subscription> deps = s.getDependsOn();
+									
+									if ( enable ){
+										
+										deps.remove( sub );
+										
+									}else{
+										
+										deps.add( sub );
+									}
+									
+									s.setDependsOn( deps );
+								}
+							});
+						}
+					}
+				}
+			});
+	}
+	
 	private static void
 	addCategorySubMenu(
 		MenuManager				menu_manager,
@@ -3333,6 +3561,8 @@ SubscriptionManagerUI
 				selected(subs.toArray( new Subscription[0]));
 			}else if ( target instanceof Subscription ){
 				selected((Subscription)target);
+			}else{
+				Debug.out( "target " + target + " not handled" );
 			}
 		}
 
